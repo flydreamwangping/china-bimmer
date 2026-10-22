@@ -1,0 +1,26 @@
+# Bimmer 打包依赖(精确锁版,与 x86_64 已验证环境一致)
+# 在 arm64(Apple Silicon)机器上 pip install -r requirements.txt 即可复现
+bimmer_connected==0.17.4
+rumps==0.4.0
+httpx==0.28.1
+PyJWT==2.15.1
+pycryptodome==4.1.0
+pillow==13.0.0
+numpy==2.5.4
+pyobjc-core==12.2.2
+pyobjc-framework-Cocoa==12.2.2
+certifi==2026.10.18
+
+# 构建工具链
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.9
+altgraph==0.17.5
+macholib==1.16.4
+
+# 传递依赖(锁版以保证可复现)
+anyio==4.15.1
+h11==0.16.0
+httpcore==1.0.9
+idna==3.20
+typing_extensions==4.16.0
+packaging==26.3

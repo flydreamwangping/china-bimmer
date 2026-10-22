@@ -1,0 +1,47 @@
+# ---- 凭据与个人数据(绝不提交) ----
+config.json
+tokens.json
+stats.json
+charge_stats.json
+
+# ---- 日志(可能含 token/URL) ----
+*.log
+
+# ---- 本机运行产物 ----
+app.log
+frozen_test.log
+com.wangping.bimmer.plist
+
+# ---- 构建产物 ----
+Bimmer.app
+dist/
+build/
+*.dmg
+*.tar.gz
+__pycache__/
+*.pyc
+*.pyo
+
+# ---- 虚拟环境 ----
+venv/
+venv-arm64/
+
+# ---- macOS ----
+.DS_Store
+
+# ---- 图标中间产物 ----
+Bimmer.iconset/
+
+# ---- 调试/临时脚本与图片 ----
+captcha_*.png
+captcha_*.jpg
+diag_*.py
+probe.py
+solve2.py
+verify_captcha.py
+inspect_vehicle.py
+test_vehicles.py
+refresh_token.py
+make_icon.py
+enable_autostart.sh
+disable_autostart.sh
