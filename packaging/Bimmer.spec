@@ -2,25 +2,27 @@
 # PyInstaller 打包配置:自包含 Bimmer.app(菜单栏宝马互联驾驶)
 import os
 
-# 源码目录 = 本 .spec 文件所在目录(而非 ~/bimmer 运行时数据目录)
-ROOT = os.path.abspath(SPECPATH)
+# 项目根目录 = packaging/ 的上一级(而非 ~/bimmer 运行时数据目录)
+ROOT = os.path.dirname(os.path.abspath(SPECPATH))
+SRC = os.path.join(ROOT, "src")
 
 block_cipher = None
 
 a = Analysis(
-    [os.path.join(ROOT, "bimmer_app.py")],
-    pathex=[ROOT],
+    [os.path.join(SRC, "bimmer", "app.py")],
+    pathex=[SRC],
     binaries=[],
     datas=[],
     hiddenimports=[
         # 本地模块(函数内 import 也能被静态分析抓到,这里显式声明更稳)
-        "cn_login",
-        "cn_login_sms",
-        "geocode",
+        "bimmer.app",
+        "bimmer.login",
+        "bimmer.login_sms",
+        "bimmer.geocode",
         # bimmer_connected 中国区用 importlib.import_module("PIL.Image") 动态导入
         "PIL",
         "PIL.Image",
-        # pycryptodome(bimmer_connected 与 cn_login 均用)
+        # pycryptodome(bimmer_connected 与 bimmer.login 均用)
         "Crypto",
         "Crypto.Cipher",
         "Crypto.Cipher.AES",
@@ -38,7 +40,7 @@ a = Analysis(
     ],
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[os.path.join(ROOT, "rth_metadata.py")],
+    runtime_hooks=[os.path.join(ROOT, "packaging", "rth_metadata.py")],
     excludes=[
         "tkinter",
         "unittest",
@@ -87,7 +89,7 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name="Bimmer.app",
-    icon=os.path.join(ROOT, "Bimmer.icns"),
+    icon=os.path.join(ROOT, "packaging", "Bimmer.icns"),
     bundle_identifier="com.wangping.bimmer",
     info_plist={
         "CFBundleName": "Bimmer",

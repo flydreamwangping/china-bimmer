@@ -3,7 +3,7 @@
 # 产出:dist/Bimmer.app(ad-hoc 签名) + Bimmer-arm64.dmg
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 echo "==> [1/6] 架构自检"
@@ -30,7 +30,7 @@ fi
 echo "    使用 $PY ($("$PY" --version 2>&1))"
 
 echo "==> [2/6] 源码文件自检"
-for f in bimmer_app.py cn_login.py cn_login_sms.py geocode.py rth_metadata.py Bimmer.spec Bimmer.icns requirements.txt; do
+for f in src/bimmer/app.py src/bimmer/login.py src/bimmer/login_sms.py src/bimmer/geocode.py packaging/Bimmer.spec packaging/Bimmer.icns packaging/rth_metadata.py requirements.txt pyproject.toml; do
   [ -f "$f" ] || { echo "✗ 缺少 $f" >&2; exit 1; }
 done
 
@@ -56,7 +56,7 @@ fi
 python -c "import objc; print('      PyObjC ok')"
 
 echo "==> [4/6] PyInstaller 打包(复用 Bimmer.spec)"
-pyinstaller --clean --noconfirm Bimmer.spec
+pyinstaller --clean --noconfirm packaging/Bimmer.spec
 
 echo "==> [5/6] 校验产物架构 + ad-hoc 签名"
 BIN="dist/Bimmer.app/Contents/MacOS/Bimmer"

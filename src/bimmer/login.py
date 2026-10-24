@@ -3,7 +3,7 @@
 """复刻 Yixi/Y-BMW(MIT)的宝马中国区密码登录流程,产出 refresh_token / access_token。
 
 流程:create-captcha -> 解滑块 -> verify-captcha -> publickey -> login/pwd
-用法:BMW_USERNAME='8613...' BMW_PASSWORD='...' python3 cn_login.py
+用法:BMW_USERNAME='8613...' BMW_PASSWORD='...' python3 -m bimmer.login
 """
 import base64
 import datetime

@@ -10,7 +10,7 @@ macOS 菜单栏 App，对接宝马中国区互联驾驶（myprofile.bmw.com.cn�
 
 ## 使用
 
-安装与使用说明见 [使用文档.md](使用文档.md)。
+安装与使用说明见 [使用文档.md](docs/使用文档.md)。
 
 ## 构建
 
@@ -18,13 +18,14 @@ macOS 菜单栏 App，对接宝马中国区互联驾驶（myprofile.bmw.com.cn�
 # 本地运行
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-python bimmer_app.py
+pip install -e .          # 以可编辑方式安装 bimmer 包(src 布局)
+python -m bimmer
 
 # 打包成 .app + .dmg（x86_64 机器）
-pyinstaller --clean --noconfirm Bimmer.spec
+pyinstaller --clean --noconfirm packaging/Bimmer.spec
 
 # Apple Silicon 机器构建 arm64 原生包
-./build_arm64.sh
+./packaging/build_arm64.sh
 ```
 
 ## 说明

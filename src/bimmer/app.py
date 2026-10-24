@@ -3,7 +3,7 @@
 """宝马菜单栏 App:车况读取 + 远程控制(中国区互联驾驶)。
 
 依赖 bimmer_connected(数据/远程指令) + rumps(菜单栏)。
-token 存于 ~/bimmer/tokens.json,由 cn_login_sms.py / cn_login.py 生成。
+token 存于 ~/bimmer/tokens.json,由 login_sms.py / login.py 生成。
 """
 import asyncio
 import base64
@@ -24,7 +24,7 @@ from bimmer_connected.api.client import MyBMWClient
 from bimmer_connected.const import CarBrands, Regions
 from bimmer_connected.models import MyBMWAuthError, MyBMWCaptchaMissingError
 
-import geocode
+from bimmer import geocode
 
 TOKENS_PATH = os.path.expanduser("~/bimmer/tokens.json")
 STATS_PATH = os.path.expanduser("~/bimmer/stats.json")
@@ -309,8 +309,8 @@ class BimmerApp(rumps.App):
 
     def _login_sms_flow_sync(self) -> bool:
         """后台线程里跑短信登录,手机号+验证码在同一弹窗(带「发送验证码」按钮)。"""
-        import cn_login
-        import cn_login_sms
+        from bimmer import login
+        from bimmer import login_sms
 
         phone = (self._mobile or self._load_tokens().get("mobile") or "").strip()
         otp_id = None
@@ -323,7 +323,7 @@ class BimmerApp(rumps.App):
                 hint = "请输入手机号"
                 continue
             phone = p.strip()
-            cn_login.MOBILE = phone
+            login.MOBILE = phone
             self._mobile = phone
 
             if action == "send":
@@ -341,7 +341,7 @@ class BimmerApp(rumps.App):
                 otp_id = self._send_sms_sync(phone)
                 if otp_id is None:
                     return False
-            r = cn_login_sms.login_sms(otp_id, code.strip())
+            r = login_sms.login_sms(otp_id, code.strip())
             try:
                 data = r.json().get("data") or {}
             except Exception:
@@ -350,21 +350,21 @@ class BimmerApp(rumps.App):
                 hint = "验证码错误或已过期,请重新点「发送验证码」"
                 otp_id = None
                 continue
-            cn_login_sms.save_token(data)
-            self._mobile = cn_login.MOBILE
+            login_sms.save_token(data)
+            self._mobile = login.MOBILE
             return True
 
     def _send_sms_sync(self, phone):
         """滑块验证 + 发送短信,成功返回 otp_id,失败返回 None。"""
-        import cn_login
-        import cn_login_sms
+        from bimmer import login
+        from bimmer import login_sms
 
-        cn_login.MOBILE = phone
-        verify_id = cn_login_sms.solve_captcha()
+        login.MOBILE = phone
+        verify_id = login_sms.solve_captcha()
         if not verify_id:
             self._set_data({"notice": "滑块验证未通过,可重试"})
             return None
-        r = cn_login_sms.send_sms_code(verify_id)
+        r = login_sms.send_sms_code(verify_id)
         otp_id = None
         try:
             d = r.json()
@@ -457,26 +457,26 @@ class BimmerApp(rumps.App):
             return None
 
     async def _refresh_token_known_good(self, account) -> bool:
-        """用 cn_login 的已知可用方式刷新 token。
+        """用 login 的已知可用方式刷新 token。
 
         库内 China 刷新(_refresh_token_china)缺 x-correlation-id 等 header 会 401,
         这里复刻 refresh_token.py 的请求。成功会轮换 refresh_token 并立即落盘。
         """
         import httpx
-        import cn_login
+        from bimmer import login
 
         old_refresh = account.refresh_token or ""
         old_gcid = account.gcid or ""
         if not old_refresh:
             return False
         headers = {
-            **cn_login.BASE_HEADERS,
-            **cn_login.x_headers(),
-            "x-login-nonce": cn_login.generate_cn_nonce(old_gcid),
+            **login.BASE_HEADERS,
+            **login.x_headers(),
+            "x-login-nonce": login.generate_cn_nonce(old_gcid),
         }
         async with httpx.AsyncClient(timeout=20) as client:
             r = await client.post(
-                f"{cn_login.SERVER}/eadrax-coas/v2/oauth/token",
+                f"{login.SERVER}/eadrax-coas/v2/oauth/token",
                 data={"refresh_token": old_refresh, "grant_type": "refresh_token"},
                 headers=headers,
             )
@@ -820,5 +820,9 @@ class BimmerApp(rumps.App):
         self._run_async(self._fetch())
 
 
-if __name__ == "__main__":
+def main() -> None:
     BimmerApp().run()
+
+
+if __name__ == "__main__":
+    main()

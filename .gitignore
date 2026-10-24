@@ -25,6 +25,10 @@ __pycache__/
 # ---- 虚拟环境 ----
 venv/
 venv-arm64/
+.venv/
+
+# ---- Python 打包产物 ----
+*.egg-info/
 
 # ---- macOS ----
 .DS_Store

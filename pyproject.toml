@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bimmer"
+version = "1.0.1"
+description = "macOS 菜单栏宝马互联驾驶 App"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "bimmer_connected==0.17.4",
+    "rumps==0.4.0",
+    "httpx==0.28.1",
+    "PyJWT==2.15.1",
+    "pycryptodome==4.1.0",
+    "pillow==13.0.0",
+    "numpy==2.5.4",
+    "pyobjc-core==12.2.2",
+    "pyobjc-framework-Cocoa==12.2.2",
+    "certifi==2026.10.18",
+]
+
+[project.scripts]
+bimmer = "bimmer.app:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

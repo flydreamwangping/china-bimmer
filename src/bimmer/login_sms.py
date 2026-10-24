@@ -3,7 +3,7 @@
 """短信验证码登录(忘记密码时用)。
 
 流程:滑块验证 -> 发送短信验证码 -> 手动输入验证码 -> login/sms -> 存 token
-用法:BMW_USERNAME='8613...' python3 cn_login_sms.py
+用法:BMW_USERNAME='8613...' python3 -m bimmer.login_sms
 """
 import hashlib
 import json
@@ -12,15 +12,15 @@ import sys
 
 import httpx
 
-import cn_login
+from bimmer import login
 
 
 def send_sms_code(verify_id: str):
-    device_id = hashlib.md5(cn_login.MOBILE.encode()).hexdigest()
+    device_id = hashlib.md5(login.MOBILE.encode()).hexdigest()
     r = httpx.post(
-        f"{cn_login.SERVER}/eadrax-coas/v1/cop/message",
-        json={"mobile": cn_login.MOBILE, "deviceId": device_id, "verifyId": verify_id},
-        headers={**cn_login.BASE_HEADERS, **cn_login.x_headers()},
+        f"{login.SERVER}/eadrax-coas/v1/cop/message",
+        json={"mobile": login.MOBILE, "deviceId": device_id, "verifyId": verify_id},
+        headers={**login.BASE_HEADERS, **login.x_headers()},
         timeout=20,
     )
     print(f"[sms   ] http={r.status_code} body={r.text[:400]}")
@@ -28,20 +28,20 @@ def send_sms_code(verify_id: str):
 
 
 def login_sms(otp_id: str, code: str):
-    device_id = hashlib.md5(cn_login.MOBILE.encode()).hexdigest()
+    device_id = hashlib.md5(login.MOBILE.encode()).hexdigest()
     headers = {
-        **cn_login.BASE_HEADERS,
-        **cn_login.x_headers(),
-        "x-login-nonce": cn_login.generate_cn_nonce(cn_login.MOBILE),
+        **login.BASE_HEADERS,
+        **login.x_headers(),
+        "x-login-nonce": login.generate_cn_nonce(login.MOBILE),
     }
     body = {
-        "mobile": cn_login.MOBILE,
+        "mobile": login.MOBILE,
         "otpId": otp_id,
         "otpMsg": code,
         "deviceId": device_id,
     }
     r = httpx.post(
-        f"{cn_login.SERVER}/eadrax-coas/v2/login/sms",
+        f"{login.SERVER}/eadrax-coas/v2/login/sms",
         json=body,
         headers=headers,
         timeout=20,
@@ -56,7 +56,7 @@ def save_token(data: dict) -> bool:
     if not refresh:
         return False
     out = {
-        "mobile": cn_login.MOBILE,
+        "mobile": login.MOBILE,
         "gcid": data.get("gcid"),
         "refresh_token": refresh,
         "access_token": data.get("access_token"),
@@ -74,15 +74,15 @@ def solve_captcha() -> str:
     """滑块验证,成功返回 verifyId。"""
     for attempt in range(1, 6):
         print(f"[*] 第 {attempt} 次尝试解滑块...")
-        cap = cn_login.create_captcha()
+        cap = login.create_captcha()
         if not cap:
             continue
         verify_id = cap.get("verifyId")
-        pos = cn_login.solve_position(cap.get("backGroundImg"), cap.get("cutImg"))
+        pos = login.solve_position(cap.get("backGroundImg"), cap.get("cutImg"))
         print(f"[*] position={pos:.5f}")
-        rv = cn_login.verify_captcha(verify_id, pos)
+        rv = login.verify_captcha(verify_id, pos)
         if rv.status_code >= 300:
-            rv = cn_login.verify_captcha(verify_id, round(pos, 2))
+            rv = login.verify_captcha(verify_id, round(pos, 2))
         try:
             vcode = rv.json().get("code")
         except Exception:
@@ -95,7 +95,7 @@ def solve_captcha() -> str:
 
 
 def main() -> int:
-    if not cn_login.MOBILE:
+    if not login.MOBILE:
         print("[!] 需要 BMW_USERNAME 环境变量。")
         return 2
 
