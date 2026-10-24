@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bimmer"
-version = "1.0.1"
+version = "1.0.2"
 description = "macOS 菜单栏宝马互联驾驶 App"
 readme = "README.md"
 requires-python = ">=3.11"
