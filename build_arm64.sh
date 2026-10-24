@@ -43,7 +43,16 @@ python -m pip install -q --upgrade pip
 python -m pip install -q -r requirements.txt
 echo "    关键包架构:"
 python -c "import platform; print('      python:', platform.machine())"
-python -c "import Crypto.Cipher._raw_aes as m; print('      Crypto AES:', platform.machine())"
+# pycryptodome 的原生库(_raw_aes 等)是经 ctypes 加载的 raw lib,不是可 import 的
+# Python 模块,直接 import 会报 "does not define module export function"。这里改用
+# file 直接查看 .so 的实际架构,确保是 arm64(而不是 Rosetta 下装的 x86_64 版)。
+RAW_AES="$(python -c "import Crypto, os; print(os.path.join(os.path.dirname(Crypto.__file__), 'Cipher', '_raw_aes.abi3.so'))")"
+if file "$RAW_AES" | grep -q arm64; then
+  echo "      Crypto 原生库: arm64 ✓"
+else
+  echo "✗ pycryptodome 原生库不是 arm64: $(file -b "$RAW_AES")" >&2
+  exit 1
+fi
 python -c "import objc; print('      PyObjC ok')"
 
 echo "==> [4/6] PyInstaller 打包(复用 Bimmer.spec)"

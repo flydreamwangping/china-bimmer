@@ -2,7 +2,8 @@
 # PyInstaller 打包配置:自包含 Bimmer.app(菜单栏宝马互联驾驶)
 import os
 
-ROOT = os.path.expanduser("~/bimmer")
+# 源码目录 = 本 .spec 文件所在目录(而非 ~/bimmer 运行时数据目录)
+ROOT = os.path.abspath(SPECPATH)
 
 block_cipher = None
 
