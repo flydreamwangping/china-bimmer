@@ -30,7 +30,7 @@ fi
 echo "    使用 $PY ($("$PY" --version 2>&1))"
 
 echo "==> [2/6] 源码文件自检"
-for f in src/bimmer/app.py src/bimmer/login.py src/bimmer/login_sms.py src/bimmer/geocode.py packaging/Bimmer.spec packaging/Bimmer.icns packaging/rth_metadata.py requirements.txt pyproject.toml; do
+for f in src/bimmer/app.py src/bimmer/login.py src/bimmer/login_sms.py src/bimmer/geocode.py src/bimmer/config.py packaging/Bimmer.spec packaging/Bimmer.icns packaging/rth_metadata.py requirements.txt pyproject.toml; do
   [ -f "$f" ] || { echo "✗ 缺少 $f" >&2; exit 1; }
 done
 
@@ -82,4 +82,4 @@ echo ""
 echo "✅ 完成。交付物:"
 echo "   $ROOT/dist/Bimmer.app   (arm64,ad-hoc 签名)"
 echo "   $ROOT/Bimmer-arm64.dmg  (拖拽安装)"
-echo "提示:目标机 ~/bimmer/ 仍需手动放 config.json + tokens.json(凭据不打包)。"
+echo "提示:目标机 ~/bimmer/ 仍需手动放 config.json + tokens.json(凭据不打包);config.json 可从 config/config.example.json 复制后填写。"

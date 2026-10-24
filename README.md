@@ -28,7 +28,18 @@ pyinstaller --clean --noconfirm packaging/Bimmer.spec
 ./packaging/build_arm64.sh
 ```
 
+## 目录结构
+
+```
+src/          应用源码（bimmer 包，src 布局）
+packaging/    PyInstaller 打包资产（Bimmer.spec / 图标 / 构建脚本）
+config/       运行时配置（config.json 源码运行用；config.example.json 为提交的模板）
+docs/         使用文档
+tests/        冒烟测试
+```
+
 ## 说明
 
-- 登录凭据（`config.json` 里的百度地图 AK、`tokens.json` 里的 BMW token）**不会**提交到仓库，需在目标机自行准备。
+- 运行时配置 `config.json` **不会**提交到仓库：源码运行读 `config/config.json`，打包后的 App 读 `~/bimmer/config.json`；仓库只提交模板 [config/config.example.json](config/config.example.json)（含真实地图 AK 的 `config/config.json` 已被 `.gitignore` 排除）。
+- 登录 token（`~/bimmer/tokens.json`）同样不提交，需登录后自动生成或从已登录机器复制。
 - 远程指令会真实作用于车辆，请谨慎使用。

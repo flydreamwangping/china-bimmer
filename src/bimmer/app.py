@@ -25,6 +25,7 @@ from bimmer_connected.const import CarBrands, Regions
 from bimmer_connected.models import MyBMWAuthError, MyBMWCaptchaMissingError
 
 from bimmer import geocode
+from bimmer.config import load_config
 
 TOKENS_PATH = os.path.expanduser("~/bimmer/tokens.json")
 STATS_PATH = os.path.expanduser("~/bimmer/stats.json")
@@ -56,6 +57,22 @@ def _km(v):
     return f"{v.value} km" if v is not None and v.value is not None else "—"
 
 
+from Foundation import NSObject
+
+
+class _LoginPanelController(NSObject):
+    """登录面板按钮的 target:把点击转发给 BimmerApp(主线程)。"""
+
+    def sendTapped_(self, _sender):
+        self._owner._login_send()
+
+    def loginTapped_(self, _sender):
+        self._owner._login_submit()
+
+    def cancelTapped_(self, _sender):
+        self._owner._login_cancel()
+
+
 class BimmerApp(rumps.App):
     def __init__(self):
         super().__init__("Bimmer", title="🚗")
@@ -72,11 +89,20 @@ class BimmerApp(rumps.App):
         self._op_lock = None
         self._address = None
         self._last_geo = None
-        self._pending_prompt = None
-        self._prompt_showing = False
         self._logging_in = False
         self._login_auto_attempted = False
         self._login_lock = threading.Lock()
+        # 常驻登录面板状态(主线程操作)
+        self._login_show_requested = False
+        self._login_events = queue.Queue()
+        self._login_panel = None
+        self._login_ctrl = None
+        self._login_status = None
+        self._login_phone_field = None
+        self._login_code_field = None
+        self._login_send_btn = None
+        self._login_login_btn = None
+        self._login_otp_id = None
 
         # 动态菜单项
         self._mi_title = rumps.MenuItem("加载中…")
@@ -199,9 +225,7 @@ class BimmerApp(rumps.App):
 
     def _battery_capacity(self) -> float:
         try:
-            with open(os.path.expanduser("~/bimmer/config.json")) as f:
-                cfg = json.load(f)
-            return float(cfg.get("battery_capacity_kwh", 9.7))
+            return float(load_config().get("battery_capacity_kwh", 9.7))
         except Exception:
             return 9.7
 
@@ -272,7 +296,7 @@ class BimmerApp(rumps.App):
         self._start_login()
 
     def _start_login(self, auto: bool = False) -> bool:
-        """启动短信登录流程(独立后台线程)。auto=True 表示由定时拉取自动触发。"""
+        """发起短信登录:在主线程弹出常驻登录面板。auto=True 表示由定时拉取自动触发。"""
         with self._login_lock:
             if self._logging_in:
                 return False
@@ -281,24 +305,9 @@ class BimmerApp(rumps.App):
             if auto:
                 self._login_auto_attempted = True
             self._logging_in = True
-
-        def run():
-            try:
-                ok = self._login_sms_flow_sync()
-                if ok:
-                    self._account = None
-                    # 登录成功后不在此时重武装自动登录,避免刚登录完首次拉取
-                    # 若因瞬时故障失败就被误判为「未登录」再次弹登录框;
-                    # 改由 _fetch 真正拉到数据后再重武装。
-                    self._set_data({"notice": "登录成功 ✓"})
-                    self._run_async(self._fetch_after_login())
-                else:
-                    self._set_data({"notice": "登录未完成,可点菜单「🔐 重新登录」重试"})
-            finally:
-                with self._login_lock:
-                    self._logging_in = False
-
-        threading.Thread(target=run, daemon=True).start()
+            self._login_otp_id = None
+        # 面板必须在主线程创建/显示,这里置位后由主线程定时器 _pump_prompt 处理。
+        self._login_show_requested = True
         return True
 
     @staticmethod
@@ -307,143 +316,225 @@ class BimmerApp(rumps.App):
             return True
         return "未登录" in str(ex)
 
-    def _login_sms_flow_sync(self) -> bool:
-        """后台线程里跑短信登录,手机号+验证码在同一弹窗(带「发送验证码」按钮)。"""
+    # ---------- 登录面板(常驻,主线程) ----------
+    def _pump_prompt(self):
+        """主线程:弹出待显示的登录面板,并把后台线程结果回填到面板上。"""
+        self._drain_login_events()
+        if self._login_show_requested:
+            self._login_show_requested = False
+            self._show_login_panel()
+
+    def _drain_login_events(self):
+        while True:
+            try:
+                ev = self._login_events.get_nowait()
+            except queue.Empty:
+                return
+            tag = ev[0]
+            if tag == "send_done":
+                _, otp_id, err = ev
+                self._login_set_busy(False)
+                if otp_id:
+                    self._login_otp_id = otp_id
+                    self._login_set_status("验证码已发送,请输入短信验证码后点「登录」")
+                else:
+                    self._login_set_status(err or "验证码发送失败,请重试")
+            elif tag == "login_done":
+                _, ok, err = ev
+                if ok:
+                    self._login_finish(ok=True)
+                else:
+                    self._login_set_busy(False)
+                    self._login_set_status(err or "登录失败,请重试")
+
+    def _login_set_status(self, text):
+        if self._login_status is not None:
+            self._login_status.setStringValue_(text or "")
+
+    def _login_set_busy(self, busy):
+        if self._login_send_btn is not None:
+            self._login_send_btn.setEnabled_(not busy)
+        if self._login_login_btn is not None:
+            self._login_login_btn.setEnabled_(not busy)
+
+    def _show_login_panel(self):
+        from AppKit import (NSPanel, NSTextField, NSButton, NSMakeRect,
+                            NSBackingStoreBuffered, NSWindowStyleMaskTitled,
+                            NSBezelStyleRounded)
+
+        if self._login_panel is None:
+            panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
+                NSMakeRect(0, 0, 340, 200),
+                NSWindowStyleMaskTitled,
+                NSBackingStoreBuffered,
+                False,
+            )
+            panel.setTitle_("登录 BMW 互联驾驶")
+            panel.setReleasedWhenClosed_(False)
+            panel.setFloatingPanel_(True)
+            panel.setLevel_(3)  # 浮于普通窗口之上
+            panel.setHidesOnDeactivate_(False)
+
+            content = panel.contentView()
+
+            status = NSTextField.alloc().initWithFrame_(NSMakeRect(16, 164, 308, 20))
+            status.setEditable_(False)
+            status.setBezeled_(False)
+            status.setDrawsBackground_(False)
+
+            phone_label = NSTextField.labelWithString_("手机号")
+            phone_label.setFrame_(NSMakeRect(16, 128, 56, 22))
+            phone_field = NSTextField.alloc().initWithFrame_(NSMakeRect(76, 122, 248, 26))
+            phone_field.setPlaceholderString_("8613812345678")
+
+            code_label = NSTextField.labelWithString_("验证码")
+            code_label.setFrame_(NSMakeRect(16, 88, 56, 22))
+            code_field = NSTextField.alloc().initWithFrame_(NSMakeRect(76, 82, 248, 26))
+            code_field.setPlaceholderString_("短信验证码")
+
+            ctrl = _LoginPanelController.alloc().init()
+            ctrl._owner = self
+
+            send_btn = NSButton.buttonWithTitle_target_action_("发送验证码", ctrl, "sendTapped:")
+            send_btn.setFrame_(NSMakeRect(16, 24, 100, 32))
+            send_btn.setBezelStyle_(NSBezelStyleRounded)
+
+            login_btn = NSButton.buttonWithTitle_target_action_("登录", ctrl, "loginTapped:")
+            login_btn.setFrame_(NSMakeRect(120, 24, 100, 32))
+            login_btn.setBezelStyle_(NSBezelStyleRounded)
+            login_btn.setKeyEquivalent_("\r")
+
+            cancel_btn = NSButton.buttonWithTitle_target_action_("取消", ctrl, "cancelTapped:")
+            cancel_btn.setFrame_(NSMakeRect(224, 24, 100, 32))
+            cancel_btn.setBezelStyle_(NSBezelStyleRounded)
+            cancel_btn.setKeyEquivalent_("\x1b")
+
+            for v in (status, phone_label, phone_field, code_label, code_field,
+                      send_btn, login_btn, cancel_btn):
+                content.addSubview_(v)
+
+            self._login_panel = panel
+            self._login_ctrl = ctrl
+            self._login_status = status
+            self._login_phone_field = phone_field
+            self._login_code_field = code_field
+            self._login_send_btn = send_btn
+            self._login_login_btn = login_btn
+
+        # 每次显示前重置到初始状态
+        self._login_phone_field.setStringValue_(self._mobile or "")
+        self._login_code_field.setStringValue_("")
+        self._login_otp_id = None
+        self._login_set_status("请输入手机号和短信验证码")
+        self._login_set_busy(False)
+        self._login_panel.center()
+        self._login_panel.makeKeyAndOrderFront_(None)
+        self._login_panel.orderFrontRegardless()
+
+    def _login_send(self):
+        from bimmer import login
+        phone = login.normalize_mobile(self._login_phone_field.stringValue())
+        if not phone:
+            self._login_set_status("请输入手机号")
+            return
+        self._mobile = phone
+        self._login_phone_field.setStringValue_(phone)
+        self._login_otp_id = None
+        self._login_set_busy(True)
+        self._login_set_status("正在发送验证码…")
+        threading.Thread(target=self._login_send_worker, args=(phone,), daemon=True).start()
+
+    def _login_send_worker(self, phone):
+        try:
+            otp_id, err = self._send_sms_sync(phone)
+        except Exception as ex:
+            otp_id, err = None, f"发送验证码异常: {ex}"
+        self._login_events.put(("send_done", otp_id, err))
+
+    def _login_submit(self):
+        code = self._login_code_field.stringValue().strip()
+        if not self._login_otp_id:
+            self._login_set_status("请先点「发送验证码」获取验证码")
+            return
+        if not code:
+            self._login_set_status("请输入短信验证码")
+            return
+        self._login_set_busy(True)
+        self._login_set_status("正在登录…")
+        threading.Thread(target=self._login_submit_worker,
+                         args=(self._login_otp_id, code), daemon=True).start()
+
+    def _login_submit_worker(self, otp_id, code):
         from bimmer import login
         from bimmer import login_sms
-
-        phone = (self._mobile or self._load_tokens().get("mobile") or "").strip()
-        otp_id = None
-        hint = ""
-        while True:
-            p, code, action = self._ask_login_sync(phone, hint)
-            if action == "cancel":
-                return False
-            if not p:
-                hint = "请输入手机号"
-                continue
-            phone = p.strip()
-            login.MOBILE = phone
-            self._mobile = phone
-
-            if action == "send":
-                otp_id = self._send_sms_sync(phone)
-                if otp_id is None:
-                    return False
-                hint = "验证码已发送到手机,请输入后点「登录」"
-                continue
-
-            # action == "login"
-            if not code:
-                hint = "请先点「发送验证码」并输入验证码"
-                continue
-            if otp_id is None:
-                otp_id = self._send_sms_sync(phone)
-                if otp_id is None:
-                    return False
-            r = login_sms.login_sms(otp_id, code.strip())
+        try:
+            r = login_sms.login_sms(otp_id, code)
             try:
                 data = r.json().get("data") or {}
             except Exception:
                 data = {}
             if r.status_code >= 300 or not data.get("refresh_token"):
-                hint = "验证码错误或已过期,请重新点「发送验证码」"
-                otp_id = None
-                continue
+                self._login_events.put(("login_done", False, "验证码错误或已过期,请重新点「发送验证码」"))
+                return
             login_sms.save_token(data)
             self._mobile = login.MOBILE
-            return True
+            self._login_events.put(("login_done", True, ""))
+        except Exception as ex:
+            self._login_events.put(("login_done", False, f"登录异常: {ex}"))
+
+    def _login_cancel(self):
+        self._login_finish(ok=False)
+
+    def _login_finish(self, ok):
+        if self._login_panel is not None:
+            self._login_panel.orderOut_(None)
+        with self._login_lock:
+            self._logging_in = False
+        if ok:
+            self._account = None
+            self._set_data({"notice": "登录成功 ✓"})
+            self._run_async(self._fetch_after_login())
+        else:
+            self._set_data({"notice": "登录未完成,可点菜单「🔐 重新登录」重试"})
 
     def _send_sms_sync(self, phone):
-        """滑块验证 + 发送短信,成功返回 otp_id,失败返回 None。"""
+        """滑块验证 + 发送短信,成功返回 (otp_id, ""),失败返回 (None, 提示语)。"""
         from bimmer import login
         from bimmer import login_sms
 
-        login.MOBILE = phone
-        verify_id = login_sms.solve_captcha()
+        login.MOBILE = login.normalize_mobile(phone)
+        try:
+            verify_id = login_sms.solve_captcha()
+        except Exception as ex:
+            msg = f"滑块验证请求异常: {ex}"
+            self._set_data({"notice": msg})
+            return None, msg
         if not verify_id:
-            self._set_data({"notice": "滑块验证未通过,可重试"})
-            return None
-        r = login_sms.send_sms_code(verify_id)
+            msg = "滑块验证未通过,请重试"
+            self._set_data({"notice": msg})
+            return None, msg
+        try:
+            r = login_sms.send_sms_code(verify_id)
+        except Exception as ex:
+            msg = f"发送短信请求异常: {ex}"
+            self._set_data({"notice": msg})
+            return None, msg
         otp_id = None
         try:
             d = r.json()
             if d.get("code") not in (200, "200"):
                 msg = d.get("message") or d.get("msg") or d.get("code")
                 self._set_data({"notice": f"发送短信失败: {msg}"})
-                return None
+                return None, f"发送短信失败: {msg}"
             data = d.get("data") or {}
             otp_id = data.get("otpID") or data.get("otpId")
         except Exception:
             otp_id = None
         if not otp_id:
-            self._set_data({"notice": "未取到验证码 ID,请重试"})
-            return None
-        return otp_id
-
-    def _ask_login_sync(self, phone_default, hint):
-        """后台线程 -> 主线程:弹「手机号+验证码」双字段框,返回 (phone, code, action)。"""
-        q = queue.Queue()
-        self._pending_prompt = ("login", phone_default, hint, q)
-        try:
-            return q.get(timeout=600)
-        except queue.Empty:
-            return ("", "", "cancel")
-
-    def _pump_prompt(self):
-        """主线程:如有待显示的输入框,弹框并把结果回填给后台线程。"""
-        if self._prompt_showing or not self._pending_prompt:
-            return
-        prompt = self._pending_prompt
-        self._pending_prompt = None
-        self._prompt_showing = True
-        try:
-            tag = prompt[0]
-            if tag == "login":
-                _, phone_default, hint, q = prompt
-                q.put(self._show_login_dialog(phone_default, hint))
-        finally:
-            self._prompt_showing = False
-
-    def _show_login_dialog(self, phone_default, hint):
-        """主线程:自定义 AppKit 双字段登录框。返回 (phone, code, action)。"""
-        from AppKit import NSAlert, NSView, NSTextField, NSMakeRect
-
-        alert = NSAlert.alloc().init()
-        alert.setMessageText_("登录 BMW 互联驾驶")
-        alert.setInformativeText_(hint or "请输入手机号和短信验证码")
-        alert.setAlertStyle_(1)  # informational
-        # 按钮顺序:第一个=默认(蓝)=runModal 1000,后续依次 1001 / 1002
-        alert.addButtonWithTitle_("登录")
-        alert.addButtonWithTitle_("发送验证码")
-        alert.addButtonWithTitle_("取消")
-
-        W = 280
-        box = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, W, 88))
-
-        phone_label = NSTextField.labelWithString_("手机号")
-        phone_label.setFrame_(NSMakeRect(0, 60, 60, 22))
-        phone_field = NSTextField.alloc().initWithFrame_(NSMakeRect(62, 54, W - 62, 26))
-        phone_field.setStringValue_(phone_default or "")
-        phone_field.setPlaceholderString_("8613812345678")
-
-        code_label = NSTextField.labelWithString_("验证码")
-        code_label.setFrame_(NSMakeRect(0, 24, 60, 22))
-        code_field = NSTextField.alloc().initWithFrame_(NSMakeRect(62, 18, W - 62, 26))
-        code_field.setStringValue_("")
-        code_field.setPlaceholderString_("短信验证码")
-
-        for v in (phone_label, phone_field, code_label, code_field):
-            box.addSubview_(v)
-
-        alert.setAccessoryView_(box)
-        clicked = alert.runModal()
-        phone_field.validateEditing()
-        code_field.validateEditing()
-        phone = phone_field.stringValue().strip()
-        code = code_field.stringValue().strip()
-        action = {1000: "login", 1001: "send", 1002: "cancel"}.get(clicked, "cancel")
-        return (phone, code, action)
+            msg = "未取到验证码 ID,请重试"
+            self._set_data({"notice": msg})
+            return None, msg
+        return otp_id, ""
 
     @staticmethod
     def _access_expires_at(token: str):
@@ -726,8 +817,11 @@ class BimmerApp(rumps.App):
         self._mi_lock.title = lock
 
         if d.get("lat") is not None:
-            addr = d.get("address") or "地址查询中…"
-            if len(addr) > 40:
+            addr = d.get("address")
+            if not addr:
+                # 逆地理编码未成功时,退而显示坐标,而不是误导性的"查询中…"
+                addr = f"{d['lat']:.5f}, {d['lng']:.5f}"
+            elif len(addr) > 40:
                 addr = addr[:39] + "…"
             self._mi_location.title = f"📍 {addr} (点击打开地图)"
         else:

@@ -19,6 +19,9 @@ a = Analysis(
         "bimmer.login",
         "bimmer.login_sms",
         "bimmer.geocode",
+        "bimmer.config",
+        # geocode.py 里函数内 `from CoreLocation import ...` 动态导入的 Apple 原生逆地理编码
+        "CoreLocation",
         # bimmer_connected 中国区用 importlib.import_module("PIL.Image") 动态导入
         "PIL",
         "PIL.Image",

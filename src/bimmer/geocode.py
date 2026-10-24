@@ -2,18 +2,18 @@
 # -*- coding: utf-8 -*-
 """逆地理编码:把经纬度转成中文地址(用于菜单栏展示)。
 
-优先级:高德 / 百度 / Nominatim(免 key 兜底)。
-配置:~/bimmer/config.json 里写 {"geo_provider": "amap", "geo_key": "xxx"},
-或环境变量 BMW_GEO_PROVIDER / BMW_GEO_KEY。不配置则用 Nominatim(无需 key)。
+优先级:高德 / 百度 / Apple 原生 / Nominatim(免 key 兜底)。
+配置:项目 config/config.json 里写 {"geo_provider": "amap", "geo_key": "xxx"},
+或环境变量 BMW_GEO_PROVIDER / BMW_GEO_KEY。不配置则用 Apple 原生兜底(免 key)。
 """
-import json
+import asyncio
 import math
 import os
 import re
 
 import httpx
 
-CONFIG_PATH = os.path.expanduser("~/bimmer/config.json")
+from bimmer.config import load_config
 
 # ---- 坐标转换(宝马返回 WGS84,高德要 GCJ-02,百度要 BD-09) ----
 _PI = math.pi
@@ -64,12 +64,7 @@ def gcj02_to_bd09(lng, lat):
 
 # ---- 配置 ----
 def _cfg():
-    cfg = {}
-    try:
-        with open(CONFIG_PATH) as f:
-            cfg = json.load(f)
-    except Exception:
-        pass
+    cfg = load_config()
     provider = (cfg.get("geo_provider") or os.environ.get("BMW_GEO_PROVIDER") or "nominatim").lower()
     key = cfg.get("geo_key") or os.environ.get("BMW_GEO_KEY") or ""
     return provider, key
@@ -133,6 +128,69 @@ def _baidu_addr(res):
     return base
 
 
+def _format_placemark(pm):
+    """把 CLPlacemark 拼成中文地址:省/市/区/街道,直辖市不重复省份。"""
+    admin = pm.administrativeArea() or ""
+    city = pm.locality() or ""
+    district = pm.subLocality() or ""
+    street = pm.thoroughfare() or ""
+    name = pm.name() or ""
+
+    parts = []
+    if admin and admin != city:  # 直辖市(上海等)的 administrativeArea 为 None 或与市同名
+        parts.append(admin)
+    if city:
+        parts.append(city)
+    if district:
+        parts.append(district)
+    if street:
+        parts.append(street)
+    elif name:  # 没有街道信息时退回 POI 名称
+        parts.append(name)
+    return "".join(parts)
+
+
+async def _apple_reverse(lat, lng, timeout=10.0):
+    """Apple 原生逆地理编码(系统自带、免 key),失败/超时返回 ""。
+
+    CLGeocoder 的 completion handler 只在主线程的 run loop 里回调(rumps 的
+    AppKit 主循环保证它在跑),这里用 call_soon_threadsafe 把结果送回 asyncio
+    loop 线程。CLLocation 用 WGS-84,与宝马返回的坐标系一致。
+    """
+    try:
+        from CoreLocation import CLGeocoder, CLLocation
+    except Exception:
+        return ""
+    loop = asyncio.get_running_loop()
+    fut = loop.create_future()
+    try:
+        geocoder = CLGeocoder.alloc().init()
+        loc = CLLocation.alloc().initWithLatitude_longitude_(lat, lng)
+
+        def _done(placemarks, error):
+            def _set():
+                if fut.done():
+                    return
+                try:
+                    if error or not placemarks or len(placemarks) == 0:
+                        fut.set_result("")
+                        return
+                    fut.set_result(_format_placemark(placemarks[0]))
+                except Exception:
+                    if not fut.done():
+                        fut.set_result("")
+
+            loop.call_soon_threadsafe(_set)
+
+        geocoder.reverseGeocodeLocation_completionHandler_(loc, _done)
+    except Exception:
+        return ""
+    try:
+        return await asyncio.wait_for(fut, timeout)
+    except Exception:
+        return ""
+
+
 async def reverse_geocode(lat, lng, timeout=8.0):
     provider, key = _cfg()
     async with httpx.AsyncClient(timeout=timeout) as client:
@@ -162,11 +220,19 @@ async def reverse_geocode(lat, lng, timeout=8.0):
             if data.get("status") == 0:
                 return _baidu_addr(data.get("result") or {})
 
-        # Nominatim 兜底(免 key,WGS84 直用)
-        r = await client.get(
-            "https://nominatim.openstreetmap.org/reverse",
-            params={"lat": lat, "lon": lng, "format": "jsonv2",
-                    "accept-language": "zh-CN", "zoom": 16},
-            headers={"User-Agent": "BimmerMenuBar/1.0 (personal use)"},
-        )
-        return _nominatim_addr(r.json())
+        # Apple 原生(免 key,无需任何配置,Mac 上最省事)
+        addr = await _apple_reverse(lat, lng, timeout=timeout)
+        if addr:
+            return addr
+
+        # Nominatim 兜底(免 key,WGS84 直用;国内常被墙,仅作最后手段)
+        try:
+            r = await client.get(
+                "https://nominatim.openstreetmap.org/reverse",
+                params={"lat": lat, "lon": lng, "format": "jsonv2",
+                        "accept-language": "zh-CN", "zoom": 16},
+                headers={"User-Agent": "BimmerMenuBar/1.0 (personal use)"},
+            )
+            return _nominatim_addr(r.json())
+        except Exception:
+            return ""

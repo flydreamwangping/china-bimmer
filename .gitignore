@@ -1,5 +1,7 @@
 # ---- 凭据与个人数据(绝不提交) ----
+# 真实配置(含地图 AK)不提交;仓库只保留模板 config/config.example.json
 config.json
+config/config.json
 tokens.json
 stats.json
 charge_stats.json

@@ -10,6 +10,7 @@ import datetime
 import hashlib
 import io
 import json
+import logging
 import os
 import sys
 import uuid
@@ -32,6 +33,44 @@ BASE_HEADERS = {
     "Accept-Language": "zh-CN",
     "User-Agent": "Dart/3.3 (dart:io)",
 }
+
+# 打包成菜单栏 app(console=False)后 stdout 不可见,这里同时写到 ~/bimmer/app.log,
+# 便于在真机上排查登录/滑块/网络问题。
+_logger = logging.getLogger("bimmer.login")
+if not _logger.handlers:
+    try:
+        _log_path = os.path.expanduser("~/bimmer/app.log")
+        os.makedirs(os.path.dirname(_log_path), exist_ok=True)
+        _fh = logging.FileHandler(_log_path, encoding="utf-8")
+        _fh.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+        _logger.addHandler(_fh)
+        _logger.setLevel(logging.INFO)
+    except Exception:
+        pass
+
+
+def log(msg: str) -> None:
+    """同时输出到 stdout 与 ~/bimmer/app.log。"""
+    print(msg)
+    try:
+        _logger.info(msg)
+    except Exception:
+        pass
+
+
+def normalize_mobile(mobile: str) -> str:
+    """规整中国手机号:去除非数字字符,并补全 86 区号前缀。
+
+    宝马中国区接口要求 "86"+11 位手机号(如 8613812345678)。用户常直接输入
+    11 位(13812345678),此时 create-captcha 会返回 422,导致滑块/短信全程失败。
+    """
+    m = (mobile or "").strip()
+    digits = "".join(ch for ch in m if ch.isdigit())
+    if digits.startswith("86") and len(digits) == 13:
+        return digits
+    if len(digits) == 11 and digits.startswith("1"):
+        return "86" + digits
+    return m
 
 
 def x_headers():
@@ -94,12 +133,12 @@ def create_captcha():
         headers={**BASE_HEADERS, **x_headers()},
         timeout=20,
     )
-    print(f"[captcha] http={r.status_code}")
+    log(f"[captcha] http={r.status_code}")
     if r.status_code >= 300:
         return None
     d = r.json()
     if d.get("code") not in (200, "200"):
-        print(f"[captcha] 失败 body={r.text[:300]}")
+        log(f"[captcha] 失败 body={r.text[:300]}")
         return None
     return d.get("data")
 
@@ -154,7 +193,7 @@ def verify_captcha(verify_id: str, position: float):
         headers={**BASE_HEADERS, **x_headers()},
         timeout=20,
     )
-    print(f"[verify] http={r.status_code} body={r.text[:300]}")
+    log(f"[verify] http={r.status_code} body={r.text[:300]}")
     return r
 
 
@@ -164,7 +203,7 @@ def get_public_key():
         headers={**BASE_HEADERS, **x_headers()},
         timeout=20,
     )
-    print(f"[pubkey] http={r.status_code}")
+    log(f"[pubkey] http={r.status_code}")
     if r.status_code >= 300:
         return None
     d = r.json()
@@ -194,58 +233,60 @@ def login(verify_id: str, enc_pwd: str):
         headers=headers,
         timeout=20,
     )
-    print(f"[login ] http={r.status_code}")
-    print(f"         body={r.text[:600]}")
+    log(f"[login ] http={r.status_code}")
+    log(f"         body={r.text[:600]}")
     return r
 
 
 def main() -> int:
+    global MOBILE
+    MOBILE = normalize_mobile(MOBILE)
     if not MOBILE or not PASSWORD:
-        print("[!] 需要 BMW_USERNAME / BMW_PASSWORD 环境变量。")
+        log("[!] 需要 BMW_USERNAME / BMW_PASSWORD 环境变量。")
         return 2
 
     verify_id = None
     for attempt in range(1, 6):
-        print(f"[*] 第 {attempt} 次尝试解滑块...")
+        log(f"[*] 第 {attempt} 次尝试解滑块...")
         cap = create_captcha()
         if not cap:
-            print("[FAIL] create-captcha 失败。")
+            log("[FAIL] create-captcha 失败。")
             return 1
         verify_id = cap.get("verifyId")
         bg_b64 = cap.get("backGroundImg")
         cut_b64 = cap.get("cutImg")
 
         position = solve_position(bg_b64, cut_b64)
-        print(f"[*] 滑块 position={position:.5f} (≈{round(position, 2)})")
+        log(f"[*] 滑块 position={position:.5f} (≈{round(position, 2)})")
 
         rv = verify_captcha(verify_id, position)
         if rv.status_code >= 300:
-            print(f"     被拒,重试 2 位小数 {round(position, 2)}")
+            log(f"     被拒,重试 2 位小数 {round(position, 2)}")
             rv = verify_captcha(verify_id, round(position, 2))
         try:
             vcode = rv.json().get("code")
         except Exception:
             vcode = None
         if vcode in (200, "200"):
-            print("[PASS] 滑块验证通过。")
+            log("[PASS] 滑块验证通过。")
             break
-        print(f"[retry] 本次未通过 (code={vcode}),重新获取验证码。")
+        log(f"[retry] 本次未通过 (code={vcode}),重新获取验证码。")
     else:
-        print("[FAIL] 5 次都未通过滑块验证。")
+        log("[FAIL] 5 次都未通过滑块验证。")
         return 1
 
     pem = get_public_key()
     if not pem:
-        print("[FAIL] 拿不到公钥。")
+        log("[FAIL] 拿不到公钥。")
         return 1
     key = RSA.import_key(pem)
     cipher = PKCS1_v1_5.new(key)
     enc_pwd = base64.b64encode(cipher.encrypt(PASSWORD.encode("utf-8"))).decode()
-    print(f"[*] 密码已 RSA 加密 (len={len(enc_pwd)})")
+    log(f"[*] 密码已 RSA 加密 (len={len(enc_pwd)})")
 
     r = login(verify_id, enc_pwd)
     if r.status_code >= 300:
-        print("[FAIL] 登录失败。")
+        log("[FAIL] 登录失败。")
         return 1
     try:
         data = r.json().get("data") or {}
@@ -265,11 +306,11 @@ def main() -> int:
         with open(p, "w") as f:
             json.dump(out, f, ensure_ascii=False, indent=2)
         os.chmod(p, 0o600)
-        print(f"[PASS] 登录成功! token 已保存到 {p}")
-        print(f"       gcid={gcid}")
-        print(f"       refresh_token={refresh[:20]}...")
+        log(f"[PASS] 登录成功! token 已保存到 {p}")
+        log(f"       gcid={gcid}")
+        log(f"       refresh_token={refresh[:20]}...")
         return 0
-    print("[FAIL] 响应里没有 refresh_token。")
+    log("[FAIL] 响应里没有 refresh_token。")
     return 1
 
 

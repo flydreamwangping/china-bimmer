@@ -1,0 +1,5 @@
+{
+  "geo_provider": "baidu",
+  "geo_key": "<你的百度地图服务端 AK>",
+  "battery_capacity_kwh": 9.7
+}

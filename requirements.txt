@@ -9,6 +9,7 @@ pillow==13.0.0
 numpy==2.5.4
 pyobjc-core==12.2.2
 pyobjc-framework-Cocoa==12.2.2
+pyobjc-framework-CoreLocation==12.2.2
 certifi==2026.10.18
 
 # 构建工具链
