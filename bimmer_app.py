@@ -6,6 +6,7 @@
 token 存于 ~/bimmer/tokens.json,由 cn_login_sms.py / cn_login.py 生成。
 """
 import asyncio
+import base64
 import datetime
 import json
 import os
@@ -444,6 +445,69 @@ class BimmerApp(rumps.App):
         action = {1000: "login", 1001: "send", 1002: "cancel"}.get(clicked, "cancel")
         return (phone, code, action)
 
+    @staticmethod
+    def _access_expires_at(token: str):
+        """从 access_token JWT 读 exp(UTC),失败返回 None。"""
+        try:
+            payload = token.split(".")[1]
+            payload += "=" * (-len(payload) % 4)
+            d = json.loads(base64.urlsafe_b64decode(payload))
+            return datetime.datetime.fromtimestamp(d["exp"], tz=datetime.timezone.utc)
+        except Exception:
+            return None
+
+    async def _refresh_token_known_good(self, account) -> bool:
+        """用 cn_login 的已知可用方式刷新 token。
+
+        库内 China 刷新(_refresh_token_china)缺 x-correlation-id 等 header 会 401,
+        这里复刻 refresh_token.py 的请求。成功会轮换 refresh_token 并立即落盘。
+        """
+        import httpx
+        import cn_login
+
+        old_refresh = account.refresh_token or ""
+        old_gcid = account.gcid or ""
+        if not old_refresh:
+            return False
+        headers = {
+            **cn_login.BASE_HEADERS,
+            **cn_login.x_headers(),
+            "x-login-nonce": cn_login.generate_cn_nonce(old_gcid),
+        }
+        async with httpx.AsyncClient(timeout=20) as client:
+            r = await client.post(
+                f"{cn_login.SERVER}/eadrax-coas/v2/oauth/token",
+                data={"refresh_token": old_refresh, "grant_type": "refresh_token"},
+                headers=headers,
+            )
+        if r.status_code >= 300:
+            return False
+        d = r.json()
+        new_access = d.get("access_token")
+        if not new_access:
+            return False
+        account.set_refresh_token(
+            d.get("refresh_token") or old_refresh,
+            d.get("gcid") or old_gcid,
+            new_access,
+        )
+        self._save_tokens()  # 轮换后的 refresh_token 立即落盘,避免丢失
+        return True
+
+    async def _refresh_if_needed(self, account) -> None:
+        """access_token 缺失或临近过期时,用已知可用方式主动刷新。"""
+        try:
+            access = account.config.authentication.access_token
+        except Exception:
+            access = ""
+        exp = self._access_expires_at(access) if access else None
+        if exp is not None and datetime.datetime.now(tz=datetime.timezone.utc) < exp - datetime.timedelta(seconds=300):
+            return
+        try:
+            await self._refresh_token_known_good(account)
+        except Exception:
+            pass
+
     async def _ensure_account(self) -> MyBMWAccount:
         if self._account is None:
             t = self._load_tokens()
@@ -455,6 +519,7 @@ class BimmerApp(rumps.App):
                 t.get("refresh_token"), t.get("gcid"), t.get("access_token")
             )
             self._account = account
+        await self._refresh_if_needed(self._account)
         return self._account
 
     async def _periodic(self):

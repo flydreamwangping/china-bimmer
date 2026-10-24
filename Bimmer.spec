@@ -91,8 +91,8 @@ app = BUNDLE(
     info_plist={
         "CFBundleName": "Bimmer",
         "CFBundleDisplayName": "Bimmer",
-        "CFBundleShortVersionString": "1.0.0",
-        "CFBundleVersion": "1.0.0",
+        "CFBundleShortVersionString": "1.0.1",
+        "CFBundleVersion": "1.0.1",
         "LSUIElement": True,
         "NSHighResolutionCapable": True,
         "LSMinimumSystemVersion": "12.0",
