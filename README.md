@@ -47,3 +47,5 @@ tests/        冒烟测试
 ## 截图
 
 ![Bimmer 菜单栏截图](docs/img/screenshot.png)
+
+![Bimmer iOS 截图](docs/img/ios.jpg)
