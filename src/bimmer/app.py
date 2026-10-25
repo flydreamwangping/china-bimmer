@@ -39,8 +39,11 @@ os.makedirs(os.path.expanduser("~/bimmer"), exist_ok=True)
 
 LOCK_STATE = {
     "SECURED": "已锁定",
+    "LOCKED": "已锁定",
     "UNLOCKED": "已解锁",
     "SELECTIVE": "部分锁定",
+    "SELECTIVE_LOCKED": "部分锁定",
+    "PARTIALLY_LOCKED": "部分锁定",
     "SECURED_EXTERNAL": "外部已锁定",
 }
 
