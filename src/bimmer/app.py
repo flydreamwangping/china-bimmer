@@ -23,6 +23,7 @@ from bimmer_connected.account import MyBMWAccount
 from bimmer_connected.api.client import MyBMWClient
 from bimmer_connected.const import CarBrands, Regions
 from bimmer_connected.models import MyBMWAuthError, MyBMWCaptchaMissingError
+from bimmer_connected.vehicle import VehicleViewDirection
 
 from bimmer import geocode
 from bimmer.config import load_config
@@ -92,6 +93,7 @@ class BimmerApp(rumps.App):
         self._op_lock = None
         self._address = None
         self._last_geo = None
+        self._vehicle_image = None
         self._logging_in = False
         self._login_auto_attempted = False
         self._login_lock = threading.Lock()
@@ -656,6 +658,19 @@ class BimmerApp(rumps.App):
                 return None
             return {"kwh": kwh, "sessions": sessions}
 
+    async def _vehicle_image_base64(self, v):
+        """拉取车辆渲染图(PNG)并缓存,避免每次刷新重复请求。"""
+        if self._vehicle_image is not None:
+            return self._vehicle_image
+        try:
+            img = await v.get_vehicle_image(VehicleViewDirection.FRONTSIDE)
+        except Exception:
+            return None
+        if img:
+            self._vehicle_image = base64.b64encode(img).decode("ascii")
+            self._save_tokens()  # 图片接口同样可能触发 token 轮换
+        return self._vehicle_image
+
     async def _fetch(self):
         async with self._lock():
             try:
@@ -724,6 +739,10 @@ class BimmerApp(rumps.App):
                     d["charge_kwh"] = cs.get("kwh")
                     d["charge_sessions"] = cs.get("sessions")
                     self._save_tokens()  # 充电接口也可能触发 token 轮换
+            except Exception:
+                pass
+            try:
+                d["vehicle_image"] = await self._vehicle_image_base64(v)
             except Exception:
                 pass
             # 成功拉到数据:清掉可能残留的 error,并重武装自动登录
