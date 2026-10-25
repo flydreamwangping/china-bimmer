@@ -1,32 +1,35 @@
-# Bimmer iOS 前端(SwiftUI)
+# Bimmer iOS 版(原生 SwiftUI)
 
-原生 SwiftUI 版车况主页 + 远程控制面板,对应 macOS 菜单栏版的功能与数据模型。
-设计文档见 [docs/ios-design.md](../docs/ios-design.md)。
+宝马中国区互联驾驶 App 的 iOS 移植版:短信验证码登录(自动解滑块)+ 车况查看 + 8 项远程控制 + 定位/地图 + 里程/充电统计。
 
-## 运行
+> 最低部署目标 iOS 15.0,可装到 iPhone 11(iOS 15.6.1)。
 
-1. 直接双击打开 `Bimmer.xcodeproj`(或命令行 `open ios/Bimmer.xcodeproj`)。
-2. 选一个 iPhone 模拟器,直接 Run;或在 Xcode 预览里查看 `HomeView` / `ControlPanelView`。
+## 构建与安装
 
-> 最低 iOS 15.6,可装到 iPhone 11(iOS 15.6.1)。真机运行需在 Signing & Capabilities 里选你的 Team。
+工程用 [XcodeGen](https://github.com/yonaskolb/XcodeGen) 生成(`project.yml` → `Bimmer.xcodeproj`),免费 Apple ID 签名(7 天重签一次)。
 
-## 文件
+```bash
+# 1. 生成工程
+xcodegen generate
 
-| 文件 | 说明 |
+# 2. 构建并导出 .ipa(默认 org.china.bimmer.app,DEVELOPMENT_TEAM 在 build.sh 里填)
+./build.sh
+
+# 3. 安装到已连接的真机(iOS 17+ 用 devicectl,15/16 用 ios-deploy 或 Xcode 拖拽)
+./install.sh
+```
+
+## 目录结构
+
+| 路径 | 说明 |
 | --- | --- |
-| `BimmerApp.swift` | `@main` 入口 + TabView(状态 / 控制)+ 行程 / 充电记录占位页 |
-| `Theme.swift` | 设计 token:颜色 / 字体 / 间距(见 docs/ios-design.md) |
-| `Models.swift` | 车况模型 + 远程指令枚举(对应 app.py 的数据与 remote 菜单) |
-| `MockData.swift` | 预览样例数据(含「需注意」态) |
-| `Components.swift` | 环形电量表 / 状态条 / 指令 tile / 卡片容器 |
-| `HomeView.swift` | 车辆状态主页(hero / 状态条 / 位置 / 本月数据 / 记录入口) |
-| `ControlPanelView.swift` | 远程控制面板(中风险二次确认) |
+| `project.yml` | XcodeGen 配置(部署目标 / bundle id / AppIcon / 签名) |
+| `Bimmer/AppModel.swift` | 登录态、车况、远程指令编排(60s 轮询 + token 自动刷新) |
+| `Bimmer/BimmerApp.swift` | `@main` 入口 |
+| `Bimmer/Model/` | Token、车况模型、远程指令枚举 |
+| `Bimmer/Net/` | 请求头生成、nonce、滑块求解、URLSession 客户端 |
+| `Bimmer/Service/` | 登录/车况/远程指令编排、GCJ-02→WGS-84、逆地理、本地统计 |
+| `Bimmer/Views/` | 车况主页 / 登录 / 远程控制 / 统计 |
 | `Assets.xcassets` | 应用图标(石墨底 + 琥珀圆环 + 闪电) |
 
-## 接入后端
-
-当前为纯 UI 骨架,车况用 `MockData` 占位。接入真实后端时:
-
-- 车况:把 `RootView.status` 换成网络拉取结果,对应 macOS 版 [app.py:665](../src/bimmer/app.py#L665) 的 `_fetch`。
-- 车辆图片:后端 `_fetch` 拉取 bimmer_connected 车辆渲染图(PNG),以 base64 存进 `vehicle_image`,前端 `VehicleStatus.vehicleImageBase64` 解码显示(解码失败显示剪影)。
-- 远程指令:把 `ControlPanelView.run(_:)` 换成真实调用,对应 [app.py:748](../src/bimmer/app.py#L748) 的 `_trigger`。
+设计文档见 [docs/ios-design.md](../docs/ios-design.md)。
