@@ -16,8 +16,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.china.bimmer.app
-        MARKETING_VERSION: "1.0.2"
-        CURRENT_PROJECT_VERSION: "1"
+        MARKETING_VERSION: "1.0.4"
+        CURRENT_PROJECT_VERSION: "4"
         SWIFT_VERSION: "5.9"
         GENERATE_INFOPLIST_FILE: true
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

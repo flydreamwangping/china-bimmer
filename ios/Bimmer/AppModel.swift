@@ -109,6 +109,7 @@ final class AppModel: ObservableObject {
             brand = info.brand
             var s = try await service.vehicleState(token: t, vin: info.vin, brand: info.brand, driveTrain: info.driveTrain)
             s.name = info.name
+            s.lastRefresh = Date()
 
             let stats = await service.chargingStats(token: t, vin: info.vin)
             s.chargeKwh = stats.kwh
@@ -117,6 +118,12 @@ final class AppModel: ObservableObject {
             if let lat = s.lat, let lng = s.lng {
                 s.address = await GeocodeService.reverse(lat: lat, lng: lng)
             }
+
+            // 车辆渲染图(base64 PNG),失败回退剪影,不阻塞主流程。
+            if let img = try? await service.vehicleImage(token: t, vin: info.vin, brand: info.brand) {
+                s.vehicleImageBase64 = img
+            }
+
             state = s
             notice = nil
         } catch {

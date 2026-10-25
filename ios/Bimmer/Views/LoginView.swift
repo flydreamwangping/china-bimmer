@@ -6,43 +6,79 @@ struct LoginView: View {
     @State private var code = ""
 
     var body: some View {
-        NavigationView {
-            Form {
-                Section("登录 BMW 互联驾驶") {
-                    TextField("8613812345678", text: $phone)
+        ZStack {
+            Theme.bg.ignoresSafeArea()
+            VStack(spacing: 24) {
+                VStack(spacing: 8) {
+                    Image(systemName: "car.fill")
+                        .font(.system(size: 44))
+                        .foregroundColor(Theme.amber)
+                    Text("Bimmer")
+                        .font(.title)
+                        .bold()
+                        .foregroundColor(Theme.ink)
+                    Text("BMW 互联驾驶")
+                        .font(.subheadline)
+                        .foregroundColor(Theme.inkFaint)
+                }
+
+                VStack(spacing: 12) {
+                    TextField("86 + 手机号", text: $phone)
                         .keyboardType(.phonePad)
                         .textContentType(.telephoneNumber)
+                        .padding(12)
+                        .background(Theme.surface2)
+                        .cornerRadius(Theme.tileRadius)
+                        .foregroundColor(Theme.ink)
 
-                    HStack {
+                    HStack(spacing: 8) {
                         TextField("短信验证码", text: $code)
                             .keyboardType(.numberPad)
+                            .padding(12)
+                            .background(Theme.surface2)
+                            .cornerRadius(Theme.tileRadius)
+                            .foregroundColor(Theme.ink)
+
                         Button("发送验证码") {
                             Task { await model.sendCode(phone: phone) }
                         }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 12)
+                        .background(Theme.surface2)
+                        .cornerRadius(Theme.tileRadius)
+                        .foregroundColor(Theme.amber)
                         .disabled(model.isSendingCode || phone.isEmpty)
                     }
 
                     if !model.loginStatus.isEmpty {
                         Text(model.loginStatus)
                             .font(.footnote)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(Theme.inkDim)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                }
 
-                Section {
                     Button {
                         Task { await model.login(phone: phone, code: code) }
                     } label: {
                         HStack {
                             Spacer()
-                            if model.isSubmitting { ProgressView() } else { Text("登录") }
+                            if model.isSubmitting {
+                                ProgressView().tint(Theme.bg)
+                            } else {
+                                Text("登录").bold()
+                            }
                             Spacer()
                         }
+                        .padding(.vertical, 14)
+                        .background(Theme.amber)
+                        .cornerRadius(Theme.cardRadius)
+                        .foregroundColor(Theme.bg)
                     }
                     .disabled(model.isSubmitting || model.otpID == nil || code.isEmpty)
                 }
             }
-            .navigationTitle("Bimmer")
+            .padding(Theme.pageMargin)
         }
+        .preferredColorScheme(.dark)
     }
 }

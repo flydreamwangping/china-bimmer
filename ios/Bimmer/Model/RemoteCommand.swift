@@ -64,10 +64,10 @@ enum RemoteCommand: String, CaseIterable, Identifiable {
         }
     }
 
-    /// 是否弹确认框(与 app.py 一致:锁车/解锁/开启空调需要确认)。
+    /// 是否弹确认框(见 docs/ios-design.md「远程指令」:解锁/开空调/开始充电为中风险,需二次确认)。
     var needsConfirm: Bool {
         switch self {
-        case .lock, .unlock, .climateOn: return true
+        case .unlock, .climateOn, .chargeStart: return true
         default: return false
         }
     }
@@ -82,9 +82,9 @@ enum RemoteCommand: String, CaseIterable, Identifiable {
 
     var confirmDetail: String {
         switch self {
-        case .lock: return "将远程锁车。"
         case .unlock: return "将远程解锁车辆,请注意安全。"
         case .climateOn: return "将远程开启空调。"
+        case .chargeStart: return "将远程开始充电。"
         default: return ""
         }
     }

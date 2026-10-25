@@ -1,33 +1,43 @@
 import SwiftUI
 
+/// 充电记录页(首页「充电记录」入口进入):本月官方统计 + 本地充电会话。
 struct StatsView: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("本月统计").font(.headline)
-
-            if let s = model.state {
-                StatRow(label: "⚡ 本月充电", value: kwhText(s))
-                StatRow(label: "🔌 充电次数", value: sessionsText(s))
-
-                let local = Array(s.chargeSessionsLocal.suffix(8)).reversed()
-                if !local.isEmpty {
-                    Text("本地充电记录")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .padding(.top, 4)
-                    ForEach(local) { session in
-                        Text(sessionText(session))
-                            .font(.footnote)
-                            .foregroundColor(.secondary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                if let s = model.state {
+                    VStack(spacing: 12) {
+                        StatRow(label: "本月充电", value: kwhText(s), color: Theme.electric)
+                        StatRow(label: "充电次数", value: sessionsText(s), color: Theme.ink)
                     }
+                    .cardStyle()
+
+                    let local = Array(s.chargeSessionsLocal.suffix(10)).reversed()
+                    if !local.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("本地充电记录")
+                                .font(.subheadline)
+                                .foregroundColor(Theme.inkFaint)
+                            ForEach(local) { session in
+                                Text(sessionText(session))
+                                    .font(.footnote)
+                                    .foregroundColor(Theme.inkDim)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .cardStyle()
+                    }
+                } else {
+                    Text("暂无数据")
+                        .foregroundColor(Theme.inkDim)
                 }
-            } else {
-                Text("暂无数据").foregroundColor(.secondary)
             }
+            .padding(Theme.pageMargin)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.bg.ignoresSafeArea())
+        .navigationTitle("充电记录")
     }
 
     private func kwhText(_ s: VehicleState) -> String {

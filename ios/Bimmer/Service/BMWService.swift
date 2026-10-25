@@ -294,6 +294,7 @@ final class BMWService {
             elecRange = num(electric["range"])
             v.chargerConnected = (electric["isChargerConnected"] as? Bool) ?? false
             v.charging = VehicleFormat.chargingStates[str(electric["chargingStatus"]) ?? ""] ?? "未知"
+            v.chargingRaw = str(electric["chargingStatus"])
         }
 
         var total: Double?
@@ -316,13 +317,25 @@ final class BMWService {
         v.rangeFuel = VehicleFormat.km(fuelRange)
         v.rangeTotal = VehicleFormat.km(total)
 
+        // 原始数值(供 hero 环形 / 大字 / 语义色)。
+        v.batteryPercent = batteryPercent
+        if let bp = batteryPercent {
+            v.batteryEnergyKwh = Double(bp) / 100.0 * VehicleFormat.batteryCapacityKwh
+        }
+        v.fuelLitersValue = fuelLiters
+        v.rangeElecValue = elecRange
+        v.rangeFuelValue = fuelRange
+        v.rangeTotalValue = total
+
         if let mileage = num(state["currentMileage"]) {
             v.mileage = VehicleFormat.km(mileage)
+            v.mileageValue = mileage
             v.monthKm = StatsStore.recordMileage(mileage)
         }
 
         let doors = state["doorsState"] as? [String: Any] ?? [:]
         v.lock = VehicleFormat.lockStates[str(doors["combinedSecurityState"]) ?? ""] ?? "未知"
+        v.lockRaw = str(doors["combinedSecurityState"])
         v.lidsOpen = hasOpen(doors)
 
         let windows = state["windowsState"] as? [String: Any] ?? [:]
@@ -376,6 +389,23 @@ final class BMWService {
         } catch {
             return (nil, nil)
         }
+    }
+
+    /// 车辆渲染图(base64 PNG)。失败抛错,由调用方 best-effort 兜底(设计文档「失败回退剪影」)。
+    func vehicleImage(token: Token, vin: String, brand: String) async throws -> String {
+        var h = businessHeaders(token: token, brand: brand, extra: ["bmw-vin": vin])
+        h["accept"] = "image/png"
+        h["bmw-app-vehicle-type"] = "connected"
+        let (data, status) = try await client.request(
+            "GET", API.vehicleImage,
+            query: [
+                URLQueryItem(name: "carView", value: "VehicleStatus"),
+                URLQueryItem(name: "toCrop", value: "true"),
+            ],
+            headers: h
+        )
+        guard status < 300, !data.isEmpty else { throw BMWError.parse("车辆图 HTTP \(status)") }
+        return data.base64EncodedString()
     }
 
     // MARK: - 远程指令

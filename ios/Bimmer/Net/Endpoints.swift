@@ -18,6 +18,7 @@ enum API {
     static let vehicleProfile = "/eadrax-vcs/v5/vehicle-data/profile"
     static let vehicleState = "/eadrax-vcs/v4/vehicles/state"
     static let chargingStats = "/eadrax-chs/v2/charging-statistics"
+    static let vehicleImage = "/eadrax-ics/v5/presentation/vehicles/images"
 
     // 远程指令(const.py)
     static let remoteCommand = "/eadrax-vrccs/v4/presentation/remote-commands"
