@@ -36,6 +36,7 @@ packaging/    PyInstaller 打包资产（Bimmer.spec / 图标 / 构建脚本）
 config/       运行时配置（config.json 源码运行用；config.example.json 为提交的模板）
 docs/         使用文档 + 截图（img/）
 tests/        冒烟测试
+ios/          iOS 原生 SwiftUI App（project.yml 生成 Xcode 工程 / Bimmer 源码 / build.sh / install.sh）
 ```
 
 ## 说明
