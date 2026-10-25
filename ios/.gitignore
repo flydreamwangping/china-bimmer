@@ -1,0 +1,8 @@
+# XcodeGen 生成的工程(每次 build 重新生成)
+Bimmer.xcodeproj/
+
+# 构建产物
+build/
+DerivedData/
+*.ipa
+*.xcarchive

@@ -1,0 +1,32 @@
+# XcodeGen 配置:生成 Bimmer.xcodeproj(在 VS Code 里维护,`xcodegen generate` 生成工程)
+name: Bimmer
+options:
+  bundleIdPrefix: org.china.bimmer
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+
+targets:
+  Bimmer:
+    type: application
+    platform: iOS
+    sources:
+      - Bimmer
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.china.bimmer.app
+        MARKETING_VERSION: "1.0.2"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.9"
+        GENERATE_INFOPLIST_FILE: true
+        INFOPLIST_KEY_CFBundleDisplayName: Bimmer
+        INFOPLIST_KEY_UILaunchScreen_Generation: true
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: "用于显示车辆位置"
+        SWIFT_OBJC_BRIDGING_HEADER: Bimmer-Bridging-Header.h
+        CODE_SIGN_STYLE: Automatic
+        TARGETED_DEVICE_FAMILY: "1"
+        # 免费 Apple ID 的 Personal Team ID,构建脚本会用 build.sh 里的 TEAM_ID 覆盖;也可在这里直接填。
+        DEVELOPMENT_TEAM: ""
+    scheme:
+      testTargets: []
